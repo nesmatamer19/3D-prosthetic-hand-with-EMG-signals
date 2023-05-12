@@ -25,9 +25,9 @@ from sklearn import svm
 
 clf = svm.SVC()
 
-df = pd.read_csv('/content/drive/MyDrive/After Midterm/EMG.csv')
+df = pd.read_csv('/content/Data.csv')
 
-#df.columns=['sensor','label']
+#df.columns=['sensor','label','gender']
 
 df
 
@@ -39,6 +39,7 @@ COLUMN_NAME = 'sensor'
 
 def emg_extract(data,COLUMN_NAME,sampels):
   label=[]
+  g = []
   lmax=[]
   lmin=[]
   lvar=[]
@@ -49,12 +50,13 @@ def emg_extract(data,COLUMN_NAME,sampels):
     lvar.append(l.var())
     lmean.append(l.mean())
     lmin.append(l.min())
-    label.append(data.iloc[i,-1])
-  return lmax, lmin, lmean, lvar, label
+    label.append(data.iloc[i,-2])
+    g.append(data.iloc[i,-1])
+  return lmax, lmin, lmean, lvar, g, label
 
 l=emg_extract(df,COLUMN_NAME,NUMBER_OF_SAMPLES)
 
-emg_data = pd.DataFrame({'Max' : l[0] ,'Min' : l[1] ,'Mean' : l[2] ,'Var' : l[3] ,'label' : l[4]})
+emg_data = pd.DataFrame({'Max' : l[0] ,'Min' : l[1] ,'Mean' : l[2] ,'Var' : l[3] ,'Gender' : l[4], 'label' : l[5]})
 
 emg_data
 
@@ -66,21 +68,44 @@ plt.plot(df.sensor[5000:10000],'ro')
 plt.plot(df.sensor[10000:15000],'gv')
 
 from pathlib import Path  
-filepath = Path('/content/drive/MyDrive/After Midterm/out.csv')  
+filepath = Path('/content/final_out.csv')  
 filepath.parent.mkdir(parents=True, exist_ok=True)  
 emg_data.to_csv(filepath)
 
-clf.fit(np.array(emg_data.iloc[:,:-1]),np.array(emg_data.iloc[:,-1]))
+from sklearn.model_selection import train_test_split
 
-clf.predict([np.array([209,	171, 193.52, 57.363232])])
+data_train, data_test = train_test_split(emg_data)
+
+x_train = data_train.iloc[:,:-1]
+
+y_train = data_train.iloc[:,-1]
+
+x_test = data_test.iloc[:,:-1]
+y_test = data_test.iloc[:,-1]
+
+clf.fit(np.array(x_train),np.array(y_train))
+
+print("Predicted" , ", " , "True", ",    " , "Score")
+Error = []
+for i in range(len(x_test)):
+    T = y_test.iloc[i]
+    P = clf.predict([np.array(x_test.iloc[i,:])])[0]
+    if P != T:
+      E = 0
+    else :
+      E= 1
+    print(P , ",          " , T, ",      " , E)
+    Error.append(E)
+Error = np.array(Error)
+print(Error.sum()/len(Error))
 
 test = emg_extract(df,COLUMN_NAME,10)
 
-test_data = pd.DataFrame({'Max' : test[0] ,'Min' : test[1] ,'Mean' : test[2] ,'Var' : test[3] ,'label' : test[4]})
+data10 = pd.DataFrame({'Max' : l[0] ,'Min' : l[1] ,'Mean' : l[2] ,'Var' : l[3] ,'Gender' : l[4],'label' : l[5]})
 
-test_data
+data10
 
-clf.fit(test_data.iloc[:,:-1],test_data.iloc[:,-1])
+clf.fit(data10.iloc[:,:-1],data10.iloc[:,-1])
 
 clf.predict(emg_data.iloc[:,:-1])
 
@@ -91,21 +116,23 @@ from keras.callbacks import ModelCheckpoint
 from keras.utils import np_utils
 
 model = Sequential() #model creation
-model.add(Reshape((4,1),input_shape=(4,)))
+model.add(Reshape((5,1),input_shape=(5,)))
 model.add(Conv1D(50, 1, activation='relu', input_shape=(4,1)))
+model.add(MaxPooling1D(1))
 model.add(Conv1D(50, 1, activation='relu'))
 model.add(MaxPooling1D(1))
 model.add(Dense(50,activation='relu'))
 model.add(Dense(50,activation='relu'))
-model.add(GlobalAveragePooling1D())
-model.add(Dense(3, activation='sigmoid'))
+model.add(Dense(3, activation='softmax'))
 print(model.summary())
 
 from keras.utils import to_categorical
 
-x , x_test = test_data.iloc[:,:-1] , emg_data.iloc[:,:-1]
+# x , x_test = test_data.iloc[:,:-1] , emg_data.iloc[:,:-1]
 
-y , y_test = to_categorical(test_data.iloc[:,-1]) , to_categorical(emg_data.iloc[:,-1])
+# y , y_test = to_categorical(test_data.iloc[:,-1]) , to_categorical(emg_data.iloc[:,-1])
+
+y_train = to_categorical(y_train)
 
 from sklearn.metrics import roc_curve
 
@@ -121,15 +148,15 @@ BATCH_SIZE = 10
 EPOCHS = 600
 
 # Enable validation to use ModelCheckpoint and EarlyStopping callbacks.
-history = model.fit(x,
-                      y,
+history = model.fit(x_train,
+                      y_train,
                       batch_size=BATCH_SIZE,
                       epochs=EPOCHS,
                       validation_split=0.2,
-                      verbose=0
+                      verbose=1
                       )
 
-accuracy_results = model.evaluate(x_test, y_test)
+accuracy_results = model.evaluate(x_test, to_categorical(y_test))
 print("Accuracy :",accuracy_results)
 
 # %%
@@ -161,37 +188,37 @@ plt.show()
 
 # %%
 
-print("\n--- Confusion matrix for test data ---\n")
+# print("\n--- Confusion matrix for test data ---\n")
 
-y_pred_test = model.predict(x_test)
-# # Take the class with the highest probability from the test predictions
-max_y_pred_test = np.argmax(y_pred_test, axis=1)
-max_y_test = np.argmax(y_test, axis=1)
+# y_pred_test = model.predict(x_test)
+# # # Take the class with the highest probability from the test predictions
+# max_y_pred_test = np.argmax(y_pred_test, axis=1)
+# max_y_test = np.argmax(y_test, axis=1)
 
-print(confusion_matrix(max_y_test, max_y_pred_test))
+# print(confusion_matrix(max_y_test, max_y_pred_test))
 
-# # %%
+# # # %%
 
-print("\n--- Classification report for test data ---\n")
+# print("\n--- Classification report for test data ---\n")
 
-# print(classification_report(max_y_test, max_y_pred_test))
+# # print(classification_report(max_y_test, max_y_pred_test))
 
-#x_test, y_test = create_segments_and_labels(df_test,
-#                                            TIME_PERIODS,
-#                                            STEP_DISTANCE,
-#                                           'LABEL')
-#x_test = x_test.reshape(x_test.shape[0], input_shape)
-#y_pred = model.predict(x_test)
-# if accuracy_results[1]<0.5:
-#   y_pred = 1-y_pred
-#fpr_keras, tpr_keras, thresholds_keras = roc_curve(y_test,y_pred)
-# plt.figure(1)
-# plt.plot(fpr_keras, tpr_keras)
-# plt.xlabel('False positive rate')
-# plt.ylabel('True positive rate')
-# plt.title('ROC curve')
-# plt.legend(loc='best')
-# plt.show()
+# #x_test, y_test = create_segments_and_labels(df_test,
+# #                                            TIME_PERIODS,
+# #                                          STEP_DISTANCE,
+# #                                           'LABEL')
+# #x_test = x_test.reshape(x_test.shape[0], input_shape)
+# #y_pred = model.predict(x_test)
+# # if accuracy_results[1]<0.5:
+# #   y_pred = 1-y_pred
+# #fpr_keras, tpr_keras, thresholds_keras = roc_curve(y_test,y_pred)
+# # plt.figure(1)
+# # plt.plot(fpr_keras, tpr_keras)
+# # plt.xlabel('False positive rate')
+# # plt.ylabel('True positive rate')
+# # plt.title('ROC curve')
+# # plt.legend(loc='best')
+# # plt.show()
 
 y_pred = model.predict(x_test)
 
@@ -200,4 +227,7 @@ print(y_pred)
 for a in range(6):
   print(np.argmax(y_pred[a]))
 
+model.save('Conv1D.h5')
+
+model.save('Conv_model')
 |
